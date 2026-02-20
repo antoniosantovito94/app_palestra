@@ -4,8 +4,6 @@ import '../shared/widgets/app_shell.dart';
 
 import '../features/workouts/workouts_page.dart';
 import '../features/workouts/workout_detail_page.dart';
-
-import '../features/exercises/exercises_page.dart';
 import '../features/progress/progress_page.dart';
 import '../features/settings/settings_page.dart';
 
@@ -28,10 +26,6 @@ final GoRouter appRouter = GoRouter(
               },
             ),
           ],
-        ),
-        GoRoute(
-          path: '/exercises',
-          builder: (context, state) => const ExercisesPage(),
         ),
         GoRoute(
           path: '/progress',

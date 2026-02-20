@@ -13,6 +13,18 @@ class WorkoutsPage extends StatefulWidget {
 class _WorkoutsPageState extends State<WorkoutsPage> {
   final store = WorkoutsStore.instance;
 
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    await store.loadPlans();
+    if (!mounted) return;
+    setState(() {});
+  }
+
   Future<void> _addPlanDialog() async {
     final controller = TextEditingController();
     final result = await showDialog<String>(
@@ -43,9 +55,9 @@ class _WorkoutsPageState extends State<WorkoutsPage> {
     final name = (result ?? '').trim();
     if (name.isEmpty) return;
 
-    setState(() {
-      store.addPlan(name);
-    });
+    await store.createPlan(name);
+    if (!mounted) return;
+    setState(() {});
   }
 
   @override
@@ -67,7 +79,77 @@ class _WorkoutsPageState extends State<WorkoutsPage> {
             child: ListTile(
               title: Text(p.name),
               subtitle: Text('${p.exercises.length} esercizi'),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (value == 'rename') {
+                    final ctrl = TextEditingController(text: p.name);
+                    final newName = await showDialog<String>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Rinomina scheda'),
+                        content: TextField(
+                          controller: ctrl,
+                          autofocus: true,
+                          decoration: const InputDecoration(labelText: 'Nome'),
+                          onSubmitted: (v) =>
+                              Navigator.of(context).pop(v.trim()),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(null),
+                            child: const Text('Annulla'),
+                          ),
+                          FilledButton(
+                            onPressed: () =>
+                                Navigator.of(context).pop(ctrl.text.trim()),
+                            child: const Text('Salva'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    final name = (newName ?? '').trim();
+                    if (name.isEmpty) return;
+
+                    await store.renamePlan(p.id, name);
+                    if (!mounted) return;
+                    setState(() {});
+                  }
+
+                  if (value == 'delete') {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Eliminare scheda?'),
+                        content: const Text(
+                          'Verranno eliminati anche gli esercizi.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Annulla'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Elimina'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (ok != true) return;
+
+                    await store.deletePlan(p.id);
+                    if (!mounted) return;
+                    setState(() {});
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'rename', child: Text('Rinomina')),
+                  PopupMenuItem(value: 'delete', child: Text('Elimina')),
+                ],
+                child: const Icon(Icons.more_vert),
+              ),
               onTap: () => context.go('/workouts/${p.id}'),
             ),
           );
@@ -75,4 +157,12 @@ class _WorkoutsPageState extends State<WorkoutsPage> {
       ),
     );
   }
+
+
+
+  
 }
+
+
+
+
