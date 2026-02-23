@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:vibration/vibration.dart';
-
 import 'models/workout_models.dart';
 import 'workouts_store.dart';
 import '../../app/app_settings.dart';
@@ -62,27 +61,40 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
               required VoidCallback onMinus,
               required VoidCallback onPlus,
             }) {
-              return Row(
-                children: [
-                  Expanded(child: Text(label)),
-                  IconButton(
-                    onPressed: onMinus,
-                    icon: const Icon(Icons.remove_circle_outline),
-                  ),
-                  SizedBox(
-                    width: 70,
-                    child: Center(
-                      child: Text(
-                        valueText,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+              final cs = Theme.of(context).colorScheme;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyLarge)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: onMinus,
+                          icon: Icon(Icons.remove_circle_outline, color: cs.primary),
+                          iconSize: 22,
+                        ),
+                        Container(
+                          width: 52,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: Text(valueText, style: Theme.of(context).textTheme.titleMedium),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: onPlus,
+                          icon: Icon(Icons.add_circle_outline, color: cs.primary),
+                          iconSize: 22,
+                        ),
+                      ],
                     ),
-                  ),
-                  IconButton(
-                    onPressed: onPlus,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ],
+                  ],
+                ),
               );
             }
 
@@ -91,28 +103,85 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
               required double value,
               required VoidCallback onMinus,
               required VoidCallback onPlus,
+              required void Function(double) onDirectInput,
             }) {
-              return Row(
-                children: [
-                  Expanded(child: Text(label)),
-                  IconButton(
-                    onPressed: onMinus,
-                    icon: const Icon(Icons.remove_circle_outline),
-                  ),
-                  SizedBox(
-                    width: 90,
-                    child: Center(
-                      child: Text(
-                        '${formatKg(value)} kg',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+              final cs = Theme.of(context).colorScheme;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyLarge)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: onMinus,
+                          icon: Icon(Icons.remove_circle_outline, color: cs.primary),
+                          iconSize: 22,
+                        ),
+                        GestureDetector(
+                          onTap: () async {
+                            final ctrl = TextEditingController(text: formatKg(value));
+                            final result = await showDialog<double>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: Text('Imposta $label'),
+                                content: TextField(
+                                  controller: ctrl,
+                                  autofocus: true,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: const InputDecoration(suffixText: 'kg'),
+                                  onSubmitted: (_) {
+                                    final v = double.tryParse(ctrl.text.replaceAll(',', '.'));
+                                    Navigator.of(context).pop(v);
+                                  },
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(null),
+                                    child: const Text('Annulla'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () {
+                                      final v = double.tryParse(ctrl.text.replaceAll(',', '.'));
+                                      Navigator.of(context).pop(v);
+                                    },
+                                    child: const Text('OK'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (result != null && result >= 0) {
+                              onDirectInput(result);
+                            }
+                          },
+                          child: Container(
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: cs.primaryContainer.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: cs.primary.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('${formatKg(value)} kg', style: Theme.of(context).textTheme.titleMedium),
+                                const SizedBox(width: 4),
+                                Icon(Icons.edit_outlined, size: 14, color: cs.primary),
+                              ],
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: onPlus,
+                          icon: Icon(Icons.add_circle_outline, color: cs.primary),
+                          iconSize: 22,
+                        ),
+                      ],
                     ),
-                  ),
-                  IconButton(
-                    onPressed: onPlus,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ],
+                  ],
+                ),
               );
             }
 
@@ -203,6 +272,7 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
                         onPlus: () => setLocalState(() {
                           weightKg += 0.5;
                         }),
+                        onDirectInput: (v) => setLocalState(() { weightKg = v; }),
                       ),
                     ] else ...[
                       Align(
@@ -226,6 +296,7 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
                             onPlus: () => setLocalState(() {
                               perSetWeights[i] += 0.5;
                             }),
+                            onDirectInput: (v) => setLocalState(() { perSetWeights[i] = v; }),
                           ),
                         ),
                     ],
@@ -346,27 +417,40 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
               required VoidCallback onMinus,
               required VoidCallback onPlus,
             }) {
-              return Row(
-                children: [
-                  Expanded(child: Text(label)),
-                  IconButton(
-                    onPressed: onMinus,
-                    icon: const Icon(Icons.remove_circle_outline),
-                  ),
-                  SizedBox(
-                    width: 70,
-                    child: Center(
-                      child: Text(
-                        valueText,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+              final cs = Theme.of(context).colorScheme;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyLarge)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: onMinus,
+                          icon: Icon(Icons.remove_circle_outline, color: cs.primary),
+                          iconSize: 22,
+                        ),
+                        Container(
+                          width: 52,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: Text(valueText, style: Theme.of(context).textTheme.titleMedium),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: onPlus,
+                          icon: Icon(Icons.add_circle_outline, color: cs.primary),
+                          iconSize: 22,
+                        ),
+                      ],
                     ),
-                  ),
-                  IconButton(
-                    onPressed: onPlus,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ],
+                  ],
+                ),
               );
             }
 
@@ -375,28 +459,85 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
               required double value,
               required VoidCallback onMinus,
               required VoidCallback onPlus,
+              required void Function(double) onDirectInput,
             }) {
-              return Row(
-                children: [
-                  Expanded(child: Text(label)),
-                  IconButton(
-                    onPressed: onMinus,
-                    icon: const Icon(Icons.remove_circle_outline),
-                  ),
-                  SizedBox(
-                    width: 90,
-                    child: Center(
-                      child: Text(
-                        '${formatKg(value)} kg',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+              final cs = Theme.of(context).colorScheme;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyLarge)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: onMinus,
+                          icon: Icon(Icons.remove_circle_outline, color: cs.primary),
+                          iconSize: 22,
+                        ),
+                        GestureDetector(
+                          onTap: () async {
+                            final ctrl = TextEditingController(text: formatKg(value));
+                            final result = await showDialog<double>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: Text('Imposta $label'),
+                                content: TextField(
+                                  controller: ctrl,
+                                  autofocus: true,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: const InputDecoration(suffixText: 'kg'),
+                                  onSubmitted: (_) {
+                                    final v = double.tryParse(ctrl.text.replaceAll(',', '.'));
+                                    Navigator.of(context).pop(v);
+                                  },
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(null),
+                                    child: const Text('Annulla'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () {
+                                      final v = double.tryParse(ctrl.text.replaceAll(',', '.'));
+                                      Navigator.of(context).pop(v);
+                                    },
+                                    child: const Text('OK'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (result != null && result >= 0) {
+                              onDirectInput(result);
+                            }
+                          },
+                          child: Container(
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: cs.primaryContainer.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: cs.primary.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('${formatKg(value)} kg', style: Theme.of(context).textTheme.titleMedium),
+                                const SizedBox(width: 4),
+                                Icon(Icons.edit_outlined, size: 14, color: cs.primary),
+                              ],
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: onPlus,
+                          icon: Icon(Icons.add_circle_outline, color: cs.primary),
+                          iconSize: 22,
+                        ),
+                      ],
                     ),
-                  ),
-                  IconButton(
-                    onPressed: onPlus,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
-                ],
+                  ],
+                ),
               );
             }
 
@@ -493,6 +634,7 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
                         onPlus: () => setLocalState(() {
                           weightKg += 0.5;
                         }),
+                        onDirectInput: (v) => setLocalState(() { weightKg = v; }),
                       ),
                     ] else ...[
                       Align(
@@ -516,6 +658,7 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
                             onPlus: () => setLocalState(() {
                               perSetWeights[i] += 0.5;
                             }),
+                            onDirectInput: (v) => setLocalState(() { perSetWeights[i] = v; }),
                           ),
                         ),
                     ],
@@ -574,212 +717,218 @@ class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: store,
-      builder: (context, _) {
-        final plan = store.getById(widget.planId);
+@override
+Widget build(BuildContext context) {
+  return AnimatedBuilder(
+    animation: store,
+    builder: (context, _) {
+      final plan = store.getById(widget.planId);
 
-        if (plan == null) {
-          return const Scaffold(
-            body: Center(child: Text('Scheda non trovata')),
+      if (plan == null) {
+        return const Scaffold(
+          body: Center(child: Text('Scheda non trovata')),
+        );
+      }
+
+      final ratio = store.workoutCompletionRatio(widget.planId);
+      final pct = (ratio * 100).round();
+
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(plan.name),
+          centerTitle: false,
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _addExerciseDialog,
+          icon: const Icon(Icons.add),
+          label: const Text('Aggiungi'),
+        ),
+body: SafeArea(
+  child: ListView.builder(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+    itemCount: plan.exercises.length + 1,
+    itemBuilder: (context, index) {
+      // 👉 HEADER
+      if (index == 0) {
+        return Container(
+          key: const ValueKey('header'),
+          margin: const EdgeInsets.only(bottom: 14),
+          child: Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer
+                          .withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.fitness_center,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      plan.name,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  Chip(label: Text('$pct%')),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+
+      // 👉 ESERCIZI
+      final ex = plan.exercises[index - 1];
+
+    final weightText = _weightText(ex);
+    final pr = store.progressOf(widget.planId, ex);
+    final statusUi = _statusUi(context, pr.status);
+
+  return Dismissible(
+  key: ValueKey('ex_${ex.id}'),
+  direction: DismissDirection.endToStart,
+  background: Container(
+    alignment: Alignment.centerRight,
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(18),
+      color: Theme.of(context).colorScheme.errorContainer,
+    ),
+    child: Icon(
+      Icons.delete_outline,
+      color: Theme.of(context).colorScheme.onErrorContainer,
+    ),
+  ),
+  confirmDismiss: (_) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminare esercizio?'),
+        content: Text('Vuoi eliminare "${ex.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+  },
+  onDismissed: (_) async {
+    await store.deleteExercise(widget.planId, ex.id);
+  },
+  child: Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      decoration: BoxDecoration(
+        color: statusUi.bgColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: statusUi.borderColor),
+      ),
+      child: ExpansionTile(
+        leading: Icon(statusUi.icon, color: statusUi.iconColor),
+        title: Text(ex.name),
+        subtitle: Text('${ex.sets} serie • ${ex.reps} reps • $weightText'),
+       trailing: Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    PopupMenuButton<String>(
+      onSelected: (value) async {
+        if (value == 'edit') {
+          final updated = await _editExerciseDialog(ex);
+          if (updated == null) return;
+
+          await store.updateExercise(
+            planId: widget.planId,
+            updatedEx: updated,
           );
         }
 
-        // ✅ QUI (prima del return Scaffold)
-        final ratio = store.workoutCompletionRatio(widget.planId);
-        final pct = (ratio * 100).round();
-
-        return Scaffold(
-          floatingActionButton: FloatingActionButton(
-            onPressed: _addExerciseDialog,
-            child: const Icon(Icons.add),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                plan.name,
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${plan.exercises.length} esercizi',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 12),
-
-              // ✅ progress workout
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.bar_chart),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Completamento allenamento: $pct%',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0, end: ratio),
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeOut,
-                        builder: (context, value, _) =>
-                            LinearProgressIndicator(value: value),
-                      ),
-                    ],
-                  ),
+        if (value == 'delete') {
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Eliminare esercizio?'),
+              content: Text('Vuoi eliminare "${ex.name}"?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Annulla'),
                 ),
-              ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Elimina'),
+                ),
+              ],
+            ),
+          );
 
-              const SizedBox(height: 16),
-              if (plan.exercises.isEmpty)
-                const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text(
-                      'Nessun esercizio. Premi + per aggiungerne uno.',
-                    ),
-                  ),
-                )
-              else
-                ...plan.exercises.map((ex) {
-                  final weightText = _weightText(ex);
+          if (ok != true) return;
 
-                  final pr = store.progressOf(widget.planId, ex);
-                  final statusUi = _statusUi(context, pr.status);
-
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOut,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: statusUi.bgColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: statusUi.borderColor),
-                    ),
-                    child: ExpansionTile(
-                      tilePadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 6,
-                      ),
-                      childrenPadding: const EdgeInsets.only(
-                        left: 8,
-                        right: 8,
-                        bottom: 8,
-                      ),
-                      leading: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        child: Icon(
-                          statusUi.icon,
-                          key: ValueKey(pr.status),
-                          color: statusUi.iconColor,
-                        ),
-                      ),
-                      title: Text(ex.name),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text(
-                            '${ex.sets} serie • ${ex.reps} reps • $weightText',
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: LinearProgressIndicator(
-                                    value: pr.ratio,
-                                    minHeight: 6,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                '${pr.doneCount}/${pr.total}',
-                                style: Theme.of(context).textTheme.labelMedium,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              const Icon(Icons.timer_outlined, size: 18),
-                              const SizedBox(width: 6),
-                              Text('Recupero: ${ex.restSeconds}s'),
-                              const Spacer(),
-                              TextButton.icon(
-                                onPressed: () => showDialog(
-                                  context: context,
-                                  builder: (_) =>
-                                      _RestTimerDialog(seconds: ex.restSeconds),
-                                ),
-                                icon: const Icon(Icons.play_arrow),
-                                label: const Text('Avvia'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      trailing: PopupMenuButton<String>(
-                        onSelected: (value) async {
-                          if (value == 'delete') {
-                            await store.deleteExercise(widget.planId, ex.id);
-                          }
-
-                          if (value == 'edit') {
-                            final updated = await _editExerciseDialog(ex);
-                            if (updated == null) return;
-
-                            await store.updateExercise(
-                              planId: widget.planId,
-                              updatedEx: updated,
-                            );
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(value: 'edit', child: Text('Modifica')),
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Elimina'),
-                          ),
-                        ],
-                        child: const Icon(Icons.more_vert),
-                      ),
-                      children: [
-                        for (int i = 0; i < ex.sets; i++)
-                          _SetRow(
-                            index: i,
-                            ex: ex,
-                            done: pr.setDone[i],
-                            onChanged: (v) => store.toggleSetDone(
-                              planId: widget.planId,
-                              ex: ex,
-                              setIndex: i,
-                              done: v ?? false,
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                }),
-            ],
-          ),
-        );
+          await store.deleteExercise(widget.planId, ex.id);
+        }
       },
-    );
-  }
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 'edit', child: Text('Modifica')),
+        PopupMenuItem(value: 'delete', child: Text('Elimina')),
+      ],
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        child: Icon(Icons.more_vert),
+      ),
+    ),
+  ],
+),
+        children: [
+          for (int i = 0; i < ex.sets; i++)
+            _SetRow(
+              index: i,
+              ex: ex,
+              done: pr.setDone[i],
+              onChanged: (v) => store.toggleSetDone(
+                planId: widget.planId,
+                ex: ex,
+                setIndex: i,
+                done: v ?? false,
+              ),
+            ),
+        ],
+      ),
+    ),
+  ),
+  );
+            },
+          ),
+        ),
+      );
+    },
+  );
 }
+}
+
 
 class _StatusUI {
   final IconData icon;
@@ -795,7 +944,7 @@ class _StatusUI {
   });
 }
 
-class _SetRow extends StatelessWidget {
+class _SetRow extends StatefulWidget {
   final int index;
   final WorkoutExercise ex;
   final bool done;
@@ -809,19 +958,78 @@ class _SetRow extends StatelessWidget {
   });
 
   @override
+  State<_SetRow> createState() => _SetRowState();
+}
+
+class _SetRowState extends State<_SetRow> {
+  bool _openedForThisDone = false;
+
+  void _handleChange(bool newValue) {
+    final prevDone = widget.done;
+
+    // 1) aggiorno lo stato (store/db)
+    widget.onChanged(newValue);
+
+    // 2) se ho appena completato la serie -> apro timer recupero
+    final shouldOpenTimer = !prevDone && newValue && widget.ex.restSeconds > 0;
+
+    if (shouldOpenTimer && !_openedForThisDone) {
+      _openedForThisDone = true;
+
+      // dopo il rebuild (per sicurezza)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (_) => _RestTimerDialog(seconds: widget.ex.restSeconds),
+        );
+      });
+    }
+
+    // se deseleziono, permetto di riaprirlo quando lo riseleziono
+    if (!newValue) _openedForThisDone = false;
+  }
+
+  @override
+  void didUpdateWidget(covariant _SetRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // se da "fatto" torna "non fatto" per qualsiasi motivo, reset
+    if (!widget.done) _openedForThisDone = false;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final perSetWeight = ex.hasPerSetWeights;
-    final w = perSetWeight ? ex.weightsKg![index] : ex.weightKg;
+    final perSetWeight = widget.ex.hasPerSetWeights;
+    final w = perSetWeight ? widget.ex.weightsKg![widget.index] : widget.ex.weightKg;
 
     String formatKg(double v) =>
         (v % 1 == 0) ? v.toInt().toString() : v.toStringAsFixed(1);
 
-    return Card(
-      child: CheckboxListTile(
-        value: done,
-        onChanged: onChanged,
-        title: Text('Serie ${index + 1}'),
-        subtitle: Text('${ex.reps} reps • ${formatKg(w)} kg'),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: Checkbox(
+            value: widget.done,
+            onChanged: (v) => _handleChange(v ?? false),
+          ),
+          title: Text('Serie ${widget.index + 1}'),
+          subtitle: Text('${widget.ex.reps} reps'),
+          trailing: Chip(
+            label: Text('${formatKg(w)} kg'),
+            visualDensity: VisualDensity.compact,
+          ),
+          onTap: () => _handleChange(!widget.done),
+        ),
       ),
     );
   }

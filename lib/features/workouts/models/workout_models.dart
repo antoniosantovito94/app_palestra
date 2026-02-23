@@ -69,6 +69,9 @@ class WorkoutExercise {
   final double weightKg;
   final List<double>? weightsKg;
 
+  /// ordine UI/DB dentro la scheda
+  final int orderIndex;
+
   /// tempo recupero tra le serie (in secondi)
   final int restSeconds;
 
@@ -79,8 +82,22 @@ class WorkoutExercise {
     required this.reps,
     required this.weightKg,
     this.weightsKg,
-    this.restSeconds = 90,
+    this.orderIndex = 0,
+    this.restSeconds = 60,
   });
 
   bool get hasPerSetWeights => weightsKg != null && weightsKg!.isNotEmpty;
+
+  WorkoutExercise copyWith({int? orderIndex}) {
+    return WorkoutExercise(
+      id: id,
+      name: name,
+      sets: sets,
+      reps: reps,
+      weightKg: weightKg,
+      weightsKg: weightsKg,
+      orderIndex: orderIndex ?? this.orderIndex,
+      restSeconds: restSeconds,
+    );
+  }
 }
