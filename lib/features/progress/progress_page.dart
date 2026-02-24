@@ -258,100 +258,94 @@ class _ProgressPageState extends State<ProgressPage> {
         ? 0.0
         : history.map((h) => h.weightKg).reduce((a, b) => a < b ? a : b);
 
+    final inputTheme = InputDecorationTheme(
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: cs.outlineVariant),
+      ),
+      filled: true,
+      fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Chip selector SCHEDA
-        SizedBox(
-          height: 36,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: planNames.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (context, i) {
-              final isSelected = planNames[i] == _selectedPlan;
-              return GestureDetector(
-                onTap: () => setState(() {
-                  _selectedPlan = planNames[i];
-                  _selectedExercise = null; // reset esercizio
-                }),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? cs.secondaryContainer
-                        : cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(20),
-                    border: isSelected
-                        ? Border.all(
-                            color: cs.secondary.withValues(alpha: 0.5))
-                        : null,
-                  ),
-                  child: Text(
-                    planNames[i],
-                    style: TextStyle(
-                      color: isSelected
-                          ? cs.onSecondaryContainer
-                          : cs.onSurfaceVariant,
-                      fontWeight: isSelected
-                          ? FontWeight.w700
-                          : FontWeight.w400,
-                      fontSize: 13,
-                    ),
-                  ),
+        // ── Selettori dropdown ──────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownMenu<String>(
+                  key: ValueKey('plan_$_selectedPlan'),
+                  initialSelection: _selectedPlan,
+                  label: const Text('Scheda'),
+                  expandedInsets: EdgeInsets.zero,
+                  inputDecorationTheme: inputTheme,
+                  onSelected: (v) => setState(() {
+                    if (v != null) _selectedPlan = v;
+                    _selectedExercise = null;
+                  }),
+                  dropdownMenuEntries: planNames
+                      .map((n) => DropdownMenuEntry(value: n, label: n))
+                      .toList(),
                 ),
-              );
-            },
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownMenu<String>(
+                  key: ValueKey('ex_${_selectedPlan}_$_selectedExercise'),
+                  initialSelection: _selectedExercise,
+                  enabled: exercises.isNotEmpty,
+                  label: const Text('Esercizio'),
+                  expandedInsets: EdgeInsets.zero,
+                  inputDecorationTheme: inputTheme,
+                  onSelected: (v) =>
+                      setState(() { if (v != null) _selectedExercise = v; }),
+                  dropdownMenuEntries: exercises
+                      .map((n) => DropdownMenuEntry(value: n, label: n))
+                      .toList(),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
 
-        // Chip selector ESERCIZIO
-        if (exercises.isNotEmpty)
-          SizedBox(
-            height: 36,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: exercises.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, i) {
-                final isSelected = exercises[i] == _selectedExercise;
-                return GestureDetector(
-                  onTap: () =>
-                      setState(() => _selectedExercise = exercises[i]),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? cs.primary
-                          : cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      exercises[i],
-                      style: TextStyle(
-                        color: isSelected
-                            ? cs.onPrimary
-                            : cs.onSurfaceVariant,
-                        fontWeight: isSelected
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                );
-              },
+        // ── Summary bar ─────────────────────────────────────────────────
+        if (history.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _SummaryChip(label: '${history.length} session${history.length == 1 ? 'e' : 'i'}'),
+                _SummaryChip(
+                  label: 'PR: ${_formatKg(maxWeight)} kg',
+                  highlight: true,
+                ),
+                if (history.length > 1)
+                  Builder(builder: (_) {
+                    final delta =
+                        history.last.weightKg - history.first.weightKg;
+                    final sign = delta > 0 ? '+' : '';
+                    return _SummaryChip(
+                      label: '$sign${_formatKg(delta)} kg dal primo',
+                      positive: delta > 0,
+                      negative: delta < 0,
+                    );
+                  }),
+              ],
             ),
           ),
+        ],
+
         const SizedBox(height: 14),
 
+        // ── Contenuto ───────────────────────────────────────────────────
         if (history.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -365,7 +359,7 @@ class _ProgressPageState extends State<ProgressPage> {
           )
         else
           SizedBox(
-            height: 130,
+            height: 150,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -765,6 +759,58 @@ class _WeightCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Summary chip ──────────────────────────────────────────────────────────────
+
+class _SummaryChip extends StatelessWidget {
+  final String label;
+  final bool highlight;
+  final bool positive;
+  final bool negative;
+
+  const _SummaryChip({
+    required this.label,
+    this.highlight = false,
+    this.positive = false,
+    this.negative = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final Color bg;
+    final Color fg;
+
+    if (highlight) {
+      bg = cs.primaryContainer;
+      fg = cs.onPrimaryContainer;
+    } else if (positive) {
+      bg = Colors.green.shade100;
+      fg = Colors.green.shade800;
+    } else if (negative) {
+      bg = Colors.red.shade100;
+      fg = Colors.red.shade800;
+    } else {
+      bg = cs.surfaceContainerHighest;
+      fg = cs.onSurfaceVariant;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: fg,
+              fontWeight: FontWeight.w600,
+            ),
       ),
     );
   }

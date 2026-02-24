@@ -17,6 +17,47 @@ class WorkoutDetailPage extends StatefulWidget {
 class _WorkoutDetailPageState extends State<WorkoutDetailPage> {
   final store = WorkoutsStore.instance;
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAndOfferReset());
+  }
+
+  Future<void> _checkAndOfferReset() async {
+    if (!mounted) return;
+    if (store.workoutCompletionRatio(widget.planId) < 1.0) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Allenamento completato!'),
+        content: const Text(
+          'Hai completato tutti gli esercizi.\n'
+          'Vuoi iniziare un nuovo allenamento?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No, torna indietro'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Nuovo allenamento'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (ok == true) {
+      await store.resetProgress(widget.planId);
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
   Future<void> _addExerciseDialog() async {
     final nameCtrl = TextEditingController();
 
@@ -745,7 +786,7 @@ Widget build(BuildContext context) {
         ),
 body: SafeArea(
   child: ListView.builder(
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
     itemCount: plan.exercises.length + 1,
     itemBuilder: (context, index) {
       // 👉 HEADER

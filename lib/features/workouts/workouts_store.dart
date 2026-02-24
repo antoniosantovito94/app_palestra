@@ -557,6 +557,33 @@ Future<void> reorderExercises({
     }
   }
 
+  Future<void> resetProgress(String planId) async {
+    final userId = _requireUserId();
+    final idx = _plans.indexWhere((p) => p.id == planId);
+    if (idx == -1) return;
+
+    final plan = _plans[idx];
+    final resetMap = <String, ExerciseProgress>{};
+
+    for (final ex in plan.exercises) {
+      final empty = List<bool>.filled(ex.sets, false);
+      resetMap[ex.id] = ExerciseProgress(
+        exerciseId: ex.id,
+        planId: planId,
+        setDone: empty,
+      );
+      await _sb
+          .from('exercise_progress')
+          .update({'set_done': empty})
+          .eq('user_id', userId)
+          .eq('plan_id', planId)
+          .eq('exercise_id', ex.id);
+    }
+
+    _plans[idx] = plan.copyWith(progressByExerciseId: resetMap);
+    notifyListeners();
+  }
+
   // util: percent workout
   double workoutCompletionRatio(String planId) {
     final plan = getById(planId);
