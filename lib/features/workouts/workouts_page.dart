@@ -85,17 +85,29 @@ class _WorkoutsPageState extends State<WorkoutsPage> {
         final plans = store.plans;
 
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Allenamenti'),
-            centerTitle: false,
-          ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _addPlanDialog,
             icon: const Icon(Icons.add),
             label: const Text('Nuova scheda'),
           ),
           body: SafeArea(
-            child: plans.isEmpty ? _buildEmptyState() : _buildList(plans),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: Text(
+                    'Allenamenti',
+                    style: Theme.of(context).textTheme.headlineMedium
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: plans.isEmpty ? _buildEmptyState() : _buildList(plans),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -155,7 +167,7 @@ class _WorkoutsPageState extends State<WorkoutsPage> {
 
   Widget _buildList(List<WorkoutPlan> plans) {
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 96),
       itemCount: plans.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, i) => _PlanCard(

@@ -601,4 +601,12 @@ Future<void> reorderExercises({
     if (total == 0) return 0;
     return done / total;
   }
+
+  void clearOnLogout() {
+    _progressChannel?.unsubscribe();
+    _progressChannel = null;
+    _realtimeStarted = false;
+    _plans.clear();
+    notifyListeners();
+  }
 }
