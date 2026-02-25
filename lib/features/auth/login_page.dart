@@ -146,6 +146,8 @@ class _LoginPageState extends State<LoginPage> {
             TextField(
               controller: emailCtrl,
               keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              enableSuggestions: false,
               autofocus: true,
               decoration: const InputDecoration(
                 labelText: 'Email',
@@ -203,9 +205,16 @@ class _LoginPageState extends State<LoginPage> {
                 const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
-              child: _signUpEmailSent
-                  ? _buildEmailConfirmation()
-                  : _buildForm(),
+              child: Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  Offstage(
+                    offstage: _signUpEmailSent,
+                    child: _buildForm(),
+                  ),
+                  if (_signUpEmailSent) _buildEmailConfirmation(),
+                ],
+              ),
             ),
           ),
         ),
@@ -241,6 +250,8 @@ class _LoginPageState extends State<LoginPage> {
                 focusNode: _emailFocus,
                 keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
+                autocorrect: false,
+                enableSuggestions: false,
                 onFieldSubmitted: (_) => _passFocus.requestFocus(),
                 validator: _validateEmail,
                 decoration: const InputDecoration(
@@ -255,6 +266,8 @@ class _LoginPageState extends State<LoginPage> {
                 controller: _passCtrl,
                 focusNode: _passFocus,
                 obscureText: _obscurePass,
+                autocorrect: false,
+                enableSuggestions: false,
                 textInputAction: _mode == _Mode.login
                     ? TextInputAction.done
                     : TextInputAction.next,
@@ -285,32 +298,35 @@ class _LoginPageState extends State<LoginPage> {
               AnimatedSize(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeInOut,
-                child: _mode == _Mode.signup
-                    ? Padding(
-                        padding: const EdgeInsets.only(top: 16),
-                        child: TextFormField(
-                          controller: _confirmCtrl,
-                          focusNode: _confirmFocus,
-                          obscureText: _obscureConfirm,
-                          textInputAction: TextInputAction.done,
-                          onFieldSubmitted: (_) => _submit(),
-                          validator: _validateConfirm,
-                          decoration: InputDecoration(
-                            labelText: 'Conferma password',
-                            prefixIcon: const Icon(Icons.lock_outlined),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscureConfirm
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                              ),
-                              onPressed: () => setState(
-                                  () => _obscureConfirm = !_obscureConfirm),
-                            ),
+                child: Offstage(
+                  offstage: _mode != _Mode.signup,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: TextFormField(
+                      controller: _confirmCtrl,
+                      focusNode: _confirmFocus,
+                      obscureText: _obscureConfirm,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _submit(),
+                      validator: _validateConfirm,
+                      decoration: InputDecoration(
+                        labelText: 'Conferma password',
+                        prefixIcon: const Icon(Icons.lock_outlined),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureConfirm
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
                           ),
+                          onPressed: () => setState(
+                              () => _obscureConfirm = !_obscureConfirm),
                         ),
-                      )
-                    : const SizedBox.shrink(),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
