@@ -19,7 +19,16 @@ class AuthGate extends StatelessWidget {
         }
         final session = snapshot.data?.session
             ?? Supabase.instance.client.auth.currentSession;
-        if (session == null) return const LoginPage();
+        // LoginPage è nel builder di MaterialApp.router, quindi sopra il
+        // Navigator del router e senza Overlay disponibile. TextField richiede
+        // un Overlay antenato per la selezione del testo → lo forniamo qui.
+        if (session == null) {
+          return Overlay(
+            initialEntries: [
+              OverlayEntry(builder: (_) => const LoginPage()),
+            ],
+          );
+        }
         return child;
       },
     );

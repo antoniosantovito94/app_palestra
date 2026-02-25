@@ -1,5 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+// Blocca le sostituzioni multi-carattere inviate dall'IME senza una selezione
+// esplicita dell'utente. Su Android (MIUI, Gboard gesture, ecc.) la tastiera
+// può sostituire il testo corrente con una parola intera in un singolo evento,
+// causando il ripristino del testo già cancellato.
+// Regola: se il cursore è collassato (nessuna selezione), è ammessa al massimo
+// 1 carattere aggiunto per evento. Se c'è una selezione (es. "seleziona tutto"
+// + incolla), la modifica è sempre permessa → il copia/incolla funziona.
+class _SingleCharInputFormatter extends TextInputFormatter {
+  const _SingleCharInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    // Cancellazioni e selezioni → sempre permesse
+    if (newValue.text.length <= oldValue.text.length) return newValue;
+    // L'utente aveva una selezione (incolla / sostituisci selezione) → permessa
+    if (!oldValue.selection.isCollapsed) return newValue;
+    // Aggiunta di esattamente 1 carattere → normale digitazione → permessa
+    if (newValue.text.length == oldValue.text.length + 1) return newValue;
+    // Più caratteri aggiunti con cursore collassato → sostituzione IME → bloccata
+    return oldValue;
+  }
+}
 
 enum _Mode { login, signup }
 
@@ -16,47 +43,66 @@ class _LoginPageState extends State<LoginPage> {
   bool _obscureConfirm = true;
   bool _loading = false;
   bool _signUpEmailSent = false;
-  String? _error;
+  String? _globalError;
 
-  final _formKey = GlobalKey<FormState>();
-  final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
-  final _confirmCtrl = TextEditingController();
+  // Valori dei campi
+  String _email = '';
+  String _password = '';
+  String _confirmPassword = '';
+  String _confirmedEmail = '';
+
+  // Errori di validazione per ogni campo
+  String? _emailError;
+  String? _passwordError;
+  String? _confirmError;
+
   final _emailFocus = FocusNode();
   final _passFocus = FocusNode();
   final _confirmFocus = FocusNode();
 
   @override
   void dispose() {
-    _emailCtrl.dispose();
-    _passCtrl.dispose();
-    _confirmCtrl.dispose();
     _emailFocus.dispose();
     _passFocus.dispose();
     _confirmFocus.dispose();
     super.dispose();
   }
 
-  // ── Validatori ────────────────────────────────────────────────────────────
+  // ── Validazione ──────────────────────────────────────────────────────────
 
-  String? _validateEmail(String? v) {
-    if (v == null || v.trim().isEmpty) return 'Email obbligatoria';
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim())) {
-      return 'Inserisci una email valida';
+  bool _validate() {
+    String? emailErr;
+    String? passErr;
+    String? confirmErr;
+
+    if (_email.trim().isEmpty) {
+      emailErr = 'Email obbligatoria';
+    } else if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+        .hasMatch(_email.trim())) {
+      emailErr = 'Inserisci una email valida';
     }
-    return null;
-  }
 
-  String? _validatePassword(String? v) {
-    if (v == null || v.isEmpty) return 'Password obbligatoria';
-    if (v.length < 6) return 'Almeno 6 caratteri';
-    return null;
-  }
+    if (_password.isEmpty) {
+      passErr = 'Password obbligatoria';
+    } else if (_password.length < 6) {
+      passErr = 'Almeno 6 caratteri';
+    }
 
-  String? _validateConfirm(String? v) {
-    if (v == null || v.isEmpty) return 'Conferma la password';
-    if (v != _passCtrl.text) return 'Le password non coincidono';
-    return null;
+    if (_mode == _Mode.signup) {
+      if (_confirmPassword.isEmpty) {
+        confirmErr = 'Conferma la password';
+      } else if (_confirmPassword != _password) {
+        confirmErr = 'Le password non coincidono';
+      }
+    }
+
+    setState(() {
+      _emailError = emailErr;
+      _passwordError = passErr;
+      _confirmError = confirmErr;
+    });
+
+    return emailErr == null && passErr == null && confirmErr == null;
   }
 
   // ── Traduzione errori Supabase ────────────────────────────────────────────
@@ -84,43 +130,46 @@ class _LoginPageState extends State<LoginPage> {
 
   void _switchMode(_Mode mode) {
     if (_mode == mode) return;
-    _formKey.currentState?.reset();
-    _confirmCtrl.clear();
     setState(() {
       _mode = mode;
-      _error = null;
+      _email = '';
+      _password = '';
+      _confirmPassword = '';
+      _emailError = null;
+      _passwordError = null;
+      _confirmError = null;
+      _globalError = null;
     });
   }
 
-  // ── Azione principale ─────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────────
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_validate()) return;
     setState(() {
       _loading = true;
-      _error = null;
+      _globalError = null;
     });
     try {
       if (_mode == _Mode.login) {
         await Supabase.instance.client.auth.signInWithPassword(
-          email: _emailCtrl.text.trim(),
-          password: _passCtrl.text,
+          email: _email.trim(),
+          password: _password,
         );
-        // AuthGate gestisce la navigazione automaticamente
       } else {
+        _confirmedEmail = _email.trim();
         final res = await Supabase.instance.client.auth.signUp(
-          email: _emailCtrl.text.trim(),
-          password: _passCtrl.text,
+          email: _email.trim(),
+          password: _password,
         );
-        // session == null → Supabase ha email confirmation attiva
         if (mounted && res.session == null) {
           setState(() => _signUpEmailSent = true);
         }
       }
     } on AuthException catch (e) {
-      if (mounted) setState(() => _error = _translateError(e.message));
+      if (mounted) setState(() => _globalError = _translateError(e.message));
     } catch (_) {
-      if (mounted) setState(() => _error = 'Errore imprevisto. Riprova.');
+      if (mounted) setState(() => _globalError = 'Errore imprevisto. Riprova.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -129,7 +178,7 @@ class _LoginPageState extends State<LoginPage> {
   // ── Dialog password dimenticata ───────────────────────────────────────────
 
   void _showForgotPassword() {
-    final emailCtrl = TextEditingController(text: _emailCtrl.text.trim());
+    final ctrl = TextEditingController(text: _email.trim());
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -144,7 +193,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: emailCtrl,
+              controller: ctrl,
               keyboardType: TextInputType.emailAddress,
               autocorrect: false,
               enableSuggestions: false,
@@ -163,26 +212,22 @@ class _LoginPageState extends State<LoginPage> {
           ),
           FilledButton(
             onPressed: () async {
-              final email = emailCtrl.text.trim();
+              final email = ctrl.text.trim();
               Navigator.pop(ctx);
               try {
                 await Supabase.instance.client.auth
                     .resetPasswordForEmail(email);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content:
-                          Text('Email di reset inviata! Controlla la posta.'),
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content:
+                        Text('Email di reset inviata! Controlla la posta.'),
+                  ));
                 }
               } catch (_) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Errore nell'invio. Riprova."),
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text("Errore nell'invio. Riprova."),
+                  ));
                 }
               }
             },
@@ -205,16 +250,9 @@ class _LoginPageState extends State<LoginPage> {
                 const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
-              child: Stack(
-                alignment: Alignment.topCenter,
-                children: [
-                  Offstage(
-                    offstage: _signUpEmailSent,
-                    child: _buildForm(),
-                  ),
-                  if (_signUpEmailSent) _buildEmailConfirmation(),
-                ],
-              ),
+              child: _signUpEmailSent
+                  ? _buildConfirmScreen()
+                  : _buildLoginForm(),
             ),
           ),
         ),
@@ -222,118 +260,167 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ── Form principale ───────────────────────────────────────────────────────
+  // ── Form ──────────────────────────────────────────────────────────────────
 
-  Widget _buildForm() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+  Widget _buildLoginForm() {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Header branding
-        _buildHeader(colorScheme, textTheme),
+        // ── Branding ──
+        Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.fitness_center_rounded,
+                size: 40,
+                color: cs.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'App Palestra',
+              style: tt.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Il tuo compagno di allenamento',
+              style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
         const SizedBox(height: 32),
 
-        // Mode toggle
-        _buildModeToggle(),
-        const SizedBox(height: 24),
-
-        // Form fields
-        Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              // Email
-              TextFormField(
-                controller: _emailCtrl,
-                focusNode: _emailFocus,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                autocorrect: false,
-                enableSuggestions: false,
-                onFieldSubmitted: (_) => _passFocus.requestFocus(),
-                validator: _validateEmail,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Password
-              TextFormField(
-                controller: _passCtrl,
-                focusNode: _passFocus,
-                obscureText: _obscurePass,
-                autocorrect: false,
-                enableSuggestions: false,
-                textInputAction: _mode == _Mode.login
-                    ? TextInputAction.done
-                    : TextInputAction.next,
-                onFieldSubmitted: (_) {
-                  if (_mode == _Mode.login) {
-                    _submit();
-                  } else {
-                    _confirmFocus.requestFocus();
-                  }
-                },
-                validator: _validatePassword,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outlined),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePass
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscurePass = !_obscurePass),
-                  ),
-                ),
-              ),
-
-              // Conferma password (solo signup) — animato
-              AnimatedSize(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeInOut,
-                child: Offstage(
-                  offstage: _mode != _Mode.signup,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: TextFormField(
-                      controller: _confirmCtrl,
-                      focusNode: _confirmFocus,
-                      obscureText: _obscureConfirm,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      validator: _validateConfirm,
-                      decoration: InputDecoration(
-                        labelText: 'Conferma password',
-                        prefixIcon: const Icon(Icons.lock_outlined),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureConfirm
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                          onPressed: () => setState(
-                              () => _obscureConfirm = !_obscureConfirm),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        // ── Toggle login / registrati ──
+        SegmentedButton<_Mode>(
+          segments: const [
+            ButtonSegment(
+              value: _Mode.login,
+              label: Text('Accedi'),
+              icon: Icon(Icons.login_rounded),
+            ),
+            ButtonSegment(
+              value: _Mode.signup,
+              label: Text('Registrati'),
+              icon: Icon(Icons.person_add_outlined),
+            ),
+          ],
+          selected: {_mode},
+          onSelectionChanged: (s) => _switchMode(s.first),
         ),
         const SizedBox(height: 24),
 
-        // Bottone principale
+        // ── Email ──
+        TextField(
+          focusNode: _emailFocus,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          autocorrect: false,
+          enableSuggestions: false,
+          enableIMEPersonalizedLearning: false,
+          // Blocca sostituzioni IME multi-carattere (bug MIUI / Gboard gesture).
+          // Permette ancora incolla tramite "seleziona tutto → incolla".
+          inputFormatters: const [_SingleCharInputFormatter()],
+          onChanged: (v) {
+            _email = v;
+            if (_emailError != null) setState(() => _emailError = null);
+          },
+          onSubmitted: (_) => _passFocus.requestFocus(),
+          decoration: InputDecoration(
+            labelText: 'Email',
+            prefixIcon: const Icon(Icons.email_outlined),
+            errorText: _emailError,
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ── Password ──
+        TextField(
+          focusNode: _passFocus,
+          obscureText: _obscurePass,
+          autocorrect: false,
+          enableSuggestions: false,
+          textInputAction:
+              _mode == _Mode.login ? TextInputAction.done : TextInputAction.next,
+          onChanged: (v) {
+            _password = v;
+            if (_passwordError != null) setState(() => _passwordError = null);
+          },
+          onSubmitted: (_) {
+            if (_mode == _Mode.login) {
+              _submit();
+            } else {
+              _confirmFocus.requestFocus();
+            }
+          },
+          decoration: InputDecoration(
+            labelText: 'Password',
+            prefixIcon: const Icon(Icons.lock_outlined),
+            errorText: _passwordError,
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePass
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+              ),
+              onPressed: () => setState(() => _obscurePass = !_obscurePass),
+            ),
+          ),
+        ),
+
+        // ── Conferma password (solo signup) ──
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: _mode == _Mode.signup
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: TextField(
+                    focusNode: _confirmFocus,
+                    obscureText: _obscureConfirm,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    textInputAction: TextInputAction.done,
+                    onChanged: (v) {
+                      _confirmPassword = v;
+                      if (_confirmError != null) {
+                        setState(() => _confirmError = null);
+                      }
+                    },
+                    onSubmitted: (_) => _submit(),
+                    decoration: InputDecoration(
+                      labelText: 'Conferma password',
+                      prefixIcon: const Icon(Icons.lock_outlined),
+                      errorText: _confirmError,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureConfirm
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscureConfirm = !_obscureConfirm),
+                      ),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ── Bottone principale ──
         FilledButton(
           onPressed: _loading ? null : _submit,
           style: FilledButton.styleFrom(
@@ -357,7 +444,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
         ),
 
-        // Password dimenticata (solo login)
+        // ── Password dimenticata ──
         if (_mode == _Mode.login) ...[
           const SizedBox(height: 8),
           Center(
@@ -368,151 +455,83 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ],
 
-        // Errore
-        if (_error != null) ...[
+        // ── Errore globale (Supabase) ──
+        if (_globalError != null) ...[
           const SizedBox(height: 16),
-          _buildErrorBox(Theme.of(context).colorScheme),
-        ],
-      ],
-    );
-  }
-
-  // ── Header branding ───────────────────────────────────────────────────────
-
-  Widget _buildHeader(ColorScheme colorScheme, TextTheme textTheme) {
-    return Column(
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            Icons.fitness_center_rounded,
-            size: 40,
-            color: colorScheme.onPrimaryContainer,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'App Palestra',
-          style: textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: colorScheme.onSurface,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Il tuo compagno di allenamento',
-          style: textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Mode toggle ───────────────────────────────────────────────────────────
-
-  Widget _buildModeToggle() {
-    return SegmentedButton<_Mode>(
-      segments: const [
-        ButtonSegment(
-          value: _Mode.login,
-          label: Text('Accedi'),
-          icon: Icon(Icons.login_rounded),
-        ),
-        ButtonSegment(
-          value: _Mode.signup,
-          label: Text('Registrati'),
-          icon: Icon(Icons.person_add_outlined),
-        ),
-      ],
-      selected: {_mode},
-      onSelectionChanged: (s) => _switchMode(s.first),
-    );
-  }
-
-  // ── Error box ─────────────────────────────────────────────────────────────
-
-  Widget _buildErrorBox(ColorScheme colorScheme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline_rounded,
-              color: colorScheme.onErrorContainer, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _error!,
-              style: TextStyle(color: colorScheme.onErrorContainer),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: cs.errorContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline_rounded,
+                    color: cs.onErrorContainer, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _globalError!,
+                    style: TextStyle(color: cs.onErrorContainer),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 
   // ── Schermata conferma email ──────────────────────────────────────────────
 
-  Widget _buildEmailConfirmation() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+  Widget _buildConfirmScreen() {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 16),
-        Icon(
-          Icons.mark_email_unread_outlined,
-          size: 72,
-          color: colorScheme.primary,
-        ),
+        Icon(Icons.mark_email_unread_outlined, size: 72, color: cs.primary),
         const SizedBox(height: 24),
         Text(
           'Controlla la tua email',
           textAlign: TextAlign.center,
-          style: textTheme.headlineSmall
-              ?.copyWith(fontWeight: FontWeight.bold),
+          style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         Text(
           'Abbiamo inviato un link di conferma a',
           textAlign: TextAlign.center,
-          style: textTheme.bodyMedium
-              ?.copyWith(color: colorScheme.onSurfaceVariant),
+          style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 4),
         Text(
-          _emailCtrl.text.trim(),
+          _confirmedEmail,
           textAlign: TextAlign.center,
-          style: textTheme.bodyMedium?.copyWith(
+          style: tt.bodyMedium?.copyWith(
             fontWeight: FontWeight.w600,
-            color: colorScheme.primary,
+            color: cs.primary,
           ),
         ),
         const SizedBox(height: 16),
         Text(
           'Clicca il link nella mail per attivare il tuo account, poi torna qui ad accedere.',
           textAlign: TextAlign.center,
-          style: textTheme.bodyMedium
-              ?.copyWith(color: colorScheme.onSurfaceVariant),
+          style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
         ),
         const SizedBox(height: 32),
         OutlinedButton.icon(
           onPressed: () => setState(() {
             _signUpEmailSent = false;
             _mode = _Mode.login;
-            _passCtrl.clear();
-            _confirmCtrl.clear();
-            _error = null;
+            _email = '';
+            _password = '';
+            _confirmPassword = '';
+            _confirmedEmail = '';
+            _globalError = null;
           }),
           icon: const Icon(Icons.arrow_back_rounded),
           label: const Text('Torna al login'),
