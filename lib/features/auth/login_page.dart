@@ -2,31 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Blocca le sostituzioni multi-carattere inviate dall'IME senza una selezione
-// esplicita dell'utente. Su Android (MIUI, Gboard gesture, ecc.) la tastiera
-// può sostituire il testo corrente con una parola intera in un singolo evento,
-// causando il ripristino del testo già cancellato.
-// Regola: se il cursore è collassato (nessuna selezione), è ammessa al massimo
-// 1 carattere aggiunto per evento. Se c'è una selezione (es. "seleziona tutto"
-// + incolla), la modifica è sempre permessa → il copia/incolla funziona.
-class _SingleCharInputFormatter extends TextInputFormatter {
-  const _SingleCharInputFormatter();
-
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    // Cancellazioni e selezioni → sempre permesse
-    if (newValue.text.length <= oldValue.text.length) return newValue;
-    // L'utente aveva una selezione (incolla / sostituisci selezione) → permessa
-    if (!oldValue.selection.isCollapsed) return newValue;
-    // Aggiunta di esattamente 1 carattere → normale digitazione → permessa
-    if (newValue.text.length == oldValue.text.length + 1) return newValue;
-    // Più caratteri aggiunti con cursore collassato → sostituzione IME → bloccata
-    return oldValue;
-  }
-}
 
 enum _Mode { login, signup }
 
@@ -47,6 +22,7 @@ class _LoginPageState extends State<LoginPage> {
 
   // Valori dei campi
   String _email = '';
+  final _emailController = TextEditingController();
   String _password = '';
   String _confirmPassword = '';
   String _confirmedEmail = '';
@@ -62,9 +38,8 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    _emailController.dispose();
     _emailFocus.dispose();
-    _passFocus.dispose();
-    _confirmFocus.dispose();
     super.dispose();
   }
 
@@ -133,6 +108,7 @@ class _LoginPageState extends State<LoginPage> {
     setState(() {
       _mode = mode;
       _email = '';
+      _emailController.clear();
       _password = '';
       _confirmPassword = '';
       _emailError = null;
@@ -181,60 +157,104 @@ class _LoginPageState extends State<LoginPage> {
     final ctrl = TextEditingController(text: _email.trim());
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reimposta password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Inserisci la tua email e ti invieremo un link per reimpostare la password.',
-              style: Theme.of(ctx).textTheme.bodyMedium,
+      builder: (ctx) {
+        String? emailErr;
+        bool sending = false;
+
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('Reimposta password'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Inserisci la tua email e ti invieremo un link per reimpostare la password.',
+                  style: Theme.of(ctx).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: ctrl,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  autofocus: true,
+                  onChanged: (_) {
+                    if (emailErr != null) setDialogState(() => emailErr = null);
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: const Icon(Icons.email_outlined),
+                    errorText: emailErr,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              enableSuggestions: false,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.email_outlined),
+            actions: [
+              TextButton(
+                onPressed: sending ? null : () => Navigator.pop(ctx),
+                child: const Text('Annulla'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annulla'),
+              FilledButton(
+                onPressed: sending
+                    ? null
+                    : () async {
+                        final email = ctrl.text.trim();
+                        if (email.isEmpty ||
+                            !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                                .hasMatch(email)) {
+                          setDialogState(
+                              () => emailErr = 'Inserisci una email valida');
+                          return;
+                        }
+                        setDialogState(() => sending = true);
+                        try {
+                          await Supabase.instance.client.auth.resetPasswordForEmail(
+                          email,
+                          redirectTo: "https://thunderous-sunburst-0259de.netlify.app/reset",
+                        );
+                              
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(const SnackBar(
+                              content: Text(
+                                  'Email di reset inviata! Controlla la posta.'),
+                            ));
+                          }
+                        } on AuthException catch (e) {
+                          setDialogState(() => sending = false);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(SnackBar(
+                              content: Text(_translateError(e.message)),
+                            ));
+                          }
+                        } catch (e) {
+                          setDialogState(() => sending = false);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(SnackBar(
+                              content: Text(e.toString()),
+                            ));
+                          }
+                        }
+                      },
+                child: sending
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Invia link'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () async {
-              final email = ctrl.text.trim();
-              Navigator.pop(ctx);
-              try {
-                await Supabase.instance.client.auth
-                    .resetPasswordForEmail(email);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content:
-                        Text('Email di reset inviata! Controlla la posta.'),
-                  ));
-                }
-              } catch (_) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text("Errore nell'invio. Riprova."),
-                  ));
-                }
-              }
-            },
-            child: const Text('Invia link'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -323,19 +343,17 @@ class _LoginPageState extends State<LoginPage> {
 
         // ── Email ──
         TextField(
-          focusNode: _emailFocus,
-          keyboardType: TextInputType.emailAddress,
-          textInputAction: TextInputAction.next,
-          autocorrect: false,
-          enableSuggestions: false,
-          enableIMEPersonalizedLearning: false,
-          // Blocca sostituzioni IME multi-carattere (bug MIUI / Gboard gesture).
-          // Permette ancora incolla tramite "seleziona tutto → incolla".
-          inputFormatters: const [_SingleCharInputFormatter()],
-          onChanged: (v) {
-            _email = v;
-            if (_emailError != null) setState(() => _emailError = null);
-          },
+  controller: _emailController,
+  focusNode: _emailFocus,
+  keyboardType: TextInputType.emailAddress,
+  textInputAction: TextInputAction.next,
+  autocorrect: false,
+  enableSuggestions: false,
+  enableIMEPersonalizedLearning: false,
+  onChanged: (v) {
+    _email = v;
+    if (_emailError != null) setState(() => _emailError = null);
+  },
           onSubmitted: (_) => _passFocus.requestFocus(),
           decoration: InputDecoration(
             labelText: 'Email',
@@ -528,6 +546,7 @@ class _LoginPageState extends State<LoginPage> {
             _signUpEmailSent = false;
             _mode = _Mode.login;
             _email = '';
+            _emailController.clear();
             _password = '';
             _confirmPassword = '';
             _confirmedEmail = '';
