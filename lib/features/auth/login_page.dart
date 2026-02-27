@@ -211,7 +211,7 @@ class _LoginPageState extends State<LoginPage> {
                         try {
                           await Supabase.instance.client.auth.resetPasswordForEmail(
                           email,
-                          redirectTo: "https://thunderous-sunburst-0259de.netlify.app/reset",
+                          redirectTo: "https://app-palestra-reset.netlify.app/reset",
                         );
                               
                           if (ctx.mounted) Navigator.pop(ctx);
